@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сканер Поставок</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; }
+        h1 { color: #333; }
+        #reader { width: 90%; max-width: 500px; border: 2px solid #ccc; border-radius: 8px; margin-bottom: 20px; }
+        #scan-result { width: 90%; max-width: 500px; padding: 15px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: none; }
+        .result-item { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .result-item:last-child { border-bottom: none; }
+        .result-item strong { color: #555; }
+        .loader { font-size: 18px; color: #888; text-align: center; }
+        .error { color: #d9534f; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Сканер Поставок Ozon</h1>
+
+    <!-- Элемент, где будет отображаться видео с камеры -->
+    <div id="reader"></div>
+
+    <!-- Элемент для вывода результата сканирования -->
+    <div id="scan-result"></div>
+
+    <!-- Подключаем библиотеку для сканирования -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <script>
+        // !!! ВАЖНО: ВСТАВЬТЕ СЮДА URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ !!!
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwkdJWIqqwLINmGEh1sRTzT2Cr_eq0Ry0zaP8U-veYyg6AnxtB8HZw-AusFbyTkigAE/exec";
+        // -----------------------------------------------------------
+
+        const resultContainer = document.getElementById('scan-result');
+
+        // Функция, которая вызывается при успешном сканировании
+        function onScanSuccess(decodedText, decodedResult) {
+            // decodedText содержит распознанный номер поставки
+            console.log(`Результат сканирования: ${decodedText}`);
+            
+            // Останавливаем сканер, чтобы не отправлять лишние запросы
+            scanner.clear();
+            
+            // Показываем сообщение о загрузке
+            resultContainer.style.display = 'block';
+            resultContainer.innerHTML = '<div class="loader">Загрузка данных...</div>';
+
+            // Формируем URL для запроса к нашему серверу
+            const requestUrl = `${WEB_APP_URL}?action=getOrderInfo&order_number=${decodedText}`;
+
+            // Отправляем запрос
+            fetch(requestUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayResult(data.data);
+                    } else {
+                        displayError(data.error);
+                    }
+                })
+                .catch(error => {
+                    displayError('Ошибка сети: ' + error.message);
+                });
+        }
+        
+        // Функция для красивого отображения результата
+        function displayResult(data) {
+            let html = `
+                <div class="result-item"><strong>Номер:</strong> ${data.order_number}</div>
+                <div class="result-item"><strong>Наш статус:</strong> ${data.internal_status}</div>
+                <div class="result-item"><strong>Статус Ozon:</strong> ${data.ozon_status || 'Не найден'}</div>
+                <div class="result-item"><strong>Склад назначения:</strong> ${data.supply_warehouse || 'Не найден'}</div>
+                <div class="result-item"><strong>Создана:</strong> ${formatOzonDate(data.created_date)}</div>
+                <div class="result-item"><strong>Слот:</strong> ${formatOzonDate(data.timeslot)}</div>
+            `;
+            resultContainer.innerHTML = html;
+        }
+        
+        // Функция для отображения ошибки
+        function displayError(message) {
+            resultContainer.innerHTML = `<div class="error">Ошибка: ${message}</div>`;
+        }
+        
+        // Вспомогательная функция для форматирования даты
+        function formatOzonDate(isoDateString) {
+            if (!isoDateString) return "—";
+            try {
+                const date = new Date(isoDateString);
+                return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                return isoDateString;
+            }
+        }
+
+        // Создаем новый экземпляр сканера
+        const scanner = new Html5QrcodeScanner(
+            "reader", // ID элемента для камеры
+            { 
+                fps: 10, // Кадров в секунду для сканирования
+                qrbox: { width: 250, height: 250 } // Размер рамки сканирования
+            },
+            /* verbose= */ false // Не показывать подробные логи в консоли
+        );
+
+        // Запускаем сканер
+        scanner.render(onScanSuccess);
+
+    </script>
+
+</body>
+</html>
